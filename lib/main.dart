@@ -14,7 +14,7 @@ class LifeLeftApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.red,
+          seedColor: Colors.grey,
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
