@@ -36,6 +36,7 @@ class _HomePageState extends State<HomePage> {
   double _progress = 0.0;
   List<DateTime> _yearDays = [];
   bool _showDays = true; // Toggle between days and percentage
+  String _displayText = '2025'; // Bottom left display text
 
   @override
   void initState() {
@@ -65,6 +66,17 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  String _getDayName(int weekday) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[weekday - 1];
+  }
+  
+  String _getMonthName(int month) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+    return months[month - 1];
+  }
+
   Widget _buildHeatmap(ThemeData theme) {
     final now = DateTime.now();
     const double iconSize = 16.5;
@@ -91,10 +103,38 @@ class _HomePageState extends State<HomePage> {
           heartColor = Colors.white;
         }
         
-        return Icon(
-          Icons.favorite,
-          size: iconSize,
-          color: heartColor,
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) {
+            setState(() {
+              _displayText = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
+            });
+          },
+          onExit: (_) {
+            setState(() {
+              _displayText = '2025';
+            });
+          },
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _displayText = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
+              });
+              // Reset to year after 2 seconds
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  setState(() {
+                    _displayText = '2025';
+                  });
+                }
+              });
+            },
+            child: Icon(
+              Icons.favorite,
+              size: iconSize,
+              color: heartColor,
+            ),
+          ),
         );
       }),
     );
@@ -160,10 +200,8 @@ class _HomePageState extends State<HomePage> {
                             
                             // Full screen heatmap
                             Expanded(
-                              child: Center(
-                                child: SingleChildScrollView(
-                                  child: _buildHeatmap(theme),
-                                ),
+                              child: SingleChildScrollView(
+                                child: _buildHeatmap(theme),
                               ),
                             ),
                           ],
@@ -172,6 +210,29 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+          
+          // Bottom left date display
+          Positioned(
+            bottom: 24,
+            left: 24,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _displayText,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+                softWrap: true,
+                overflow: TextOverflow.visible,
               ),
             ),
           ),
@@ -203,12 +264,12 @@ class _HomePageState extends State<HomePage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _showDays
-                      ? '$_daysLeft ${_daysLeft == 1 ? 'Day Remaining' : 'Days Remaining'}'
-                      : '${(_progress * 100).toStringAsFixed(1)}% Remaining',
+                        _showDays 
+                        ? '$_daysLeft Days Left'
+                        : '${(_progress * 100).toStringAsFixed(1)}% Left',
                       style: theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.normal,
-                      color: Colors.white,
+                        fontWeight: FontWeight.normal,
+                        color: Colors.white,
                       ),
                     ),
                   ],
