@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const LifeLeftApp());
@@ -36,12 +37,20 @@ class _HomePageState extends State<HomePage> {
   double _progress = 0.0;
   List<DateTime> _yearDays = [];
   bool _showDays = true; // Toggle between days and percentage
-  String _displayText = '2025'; // Bottom left display text
+  late ValueNotifier<String> _displayTextNotifier; // Use ValueNotifier instead
+  int _lastHapticIndex = -1; // Track last index for haptic feedback
 
   @override
   void initState() {
     super.initState();
+    _displayTextNotifier = ValueNotifier<String>('${DateTime.now().year}');
     _calculateDaysLeft();
+  }
+
+  @override
+  void dispose() {
+    _displayTextNotifier.dispose();
+    super.dispose();
   }
 
   void _calculateDaysLeft() {
@@ -82,61 +91,119 @@ class _HomePageState extends State<HomePage> {
     const double iconSize = 16.5;
     const double spacing = 6.0;
     
-    return Wrap(
-      spacing: spacing,
-      runSpacing: spacing,
-      children: List.generate(_yearDays.length, (index) {
-        final day = _yearDays[index];
-        final isToday = day.year == now.year && 
-                       day.month == now.month && 
-                       day.day == now.day;
-        final isPassed = day.isBefore(now);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate hearts per row based on available width
+        const double heartItemWidth = iconSize + spacing;
+        final heartsPerRow = (constraints.maxWidth / heartItemWidth).floor();
         
-        Color heartColor;
-        if (isToday) {
-          heartColor = Colors.red;
-        } else if (isPassed) {
-          // Grey for completed days
-          heartColor = Colors.grey.withOpacity(0.4);
-        } else {
-          // White for remaining days
-          heartColor = Colors.white;
-        }
-        
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) {
-            setState(() {
-              _displayText = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
-            });
-          },
-          onExit: (_) {
-            setState(() {
-              _displayText = '2025';
-            });
-          },
-          child: GestureDetector(
-            onTap: () {
-              setState(() {
-                _displayText = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
-              });
-              // Reset to year after 2 seconds
-              Future.delayed(const Duration(seconds: 2), () {
-                if (mounted) {
-                  setState(() {
-                    _displayText = '2025';
-                  });
+        return GestureDetector(
+          onPanUpdate: (details) {
+            // Get local position relative to this GestureDetector
+            final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+            if (renderBox == null) return;
+            
+            final localPosition = renderBox.globalToLocal(details.globalPosition);
+            
+            // More precise calculation with better bounds checking
+            if (localPosition.dx >= 0 && localPosition.dy >= 0 && 
+                localPosition.dx < constraints.maxWidth && localPosition.dy < constraints.maxHeight) {
+              
+              // Calculate which heart is being touched with improved precision
+              // Account for the exact center of each heart icon
+              final adjustedX = localPosition.dx;
+              final adjustedY = localPosition.dy;
+              
+              // Calculate column and row more precisely
+              final col = (adjustedX / heartItemWidth).floor();
+              final row = (adjustedY / (iconSize + spacing)).floor();
+              final index = row * heartsPerRow + col;
+              
+              // Improved bounds checking with more precise validation
+              if (col >= 0 && col < heartsPerRow && row >= 0 && 
+                  index >= 0 && index < _yearDays.length) {
+                
+                // Additional check: make sure we're actually within the heart's bounds
+                final heartLeft = col * heartItemWidth;
+                final heartTop = row * (iconSize + spacing);
+                final heartRight = heartLeft + iconSize;
+                final heartBottom = heartTop + iconSize;
+                
+                if (adjustedX >= heartLeft && adjustedX <= heartRight && 
+                    adjustedY >= heartTop && adjustedY <= heartBottom) {
+                  final day = _yearDays[index];
+                  // Add haptic feedback for drag on mobile only if different heart
+                  if (_lastHapticIndex != index) {
+                    HapticFeedback.heavyImpact(); // Try stronger feedback
+                    _lastHapticIndex = index;
+                  }
+                  _displayTextNotifier.value = '${_getDayName(day.weekday)}, ${day.day} ${_getMonthName(day.month)} ${day.year}';
                 }
-              });
-            },
-            child: Icon(
-              Icons.favorite,
-              size: iconSize,
-              color: heartColor,
-            ),
+              }
+            }
+          },
+          onPanEnd: (_) {
+            _lastHapticIndex = -1; // Reset haptic tracking
+            _displayTextNotifier.value = '${DateTime.now().year}';
+          },
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: List.generate(_yearDays.length, (index) {
+              final day = _yearDays[index];
+              final isToday = day.year == now.year && 
+                             day.month == now.month && 
+                             day.day == now.day;
+              final isPassed = day.isBefore(now);
+              
+              Color heartColor;
+              if (isToday) {
+                heartColor = Colors.red;
+              } else if (isPassed) {
+                // Grey for completed days
+                heartColor = Colors.grey.withOpacity(0.4);
+              } else {
+                // White for remaining days
+                heartColor = Colors.white;
+              }
+              
+              return MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) {
+                  HapticFeedback.heavyImpact(); // Try stronger feedback for hover
+                  _displayTextNotifier.value = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
+                },
+                onExit: (_) {
+                  _displayTextNotifier.value = '${DateTime.now().year}';
+                },
+                onHover: (_) {
+                  // Ensure real-time updates during hover movement
+                  _displayTextNotifier.value = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
+                },
+                child: GestureDetector(
+                  onTapDown: (_) {
+                    // For mobile devices - show date on touch down
+                    HapticFeedback.heavyImpact(); // Try strongest feedback for tap
+                    _displayTextNotifier.value = '${_getDayName(day.weekday)}, ${_getMonthName(day.month)} ${day.day}';
+                  },
+                  onTapUp: (_) {
+                    _displayTextNotifier.value = '${DateTime.now().year}';
+                  },
+                  onTapCancel: () {
+                    // Reset if tap is cancelled
+                    _displayTextNotifier.value = '${DateTime.now().year}';
+                  },
+                  child: Icon(
+                    Icons.favorite,
+                    size: iconSize,
+                    color: heartColor,
+                  ),
+                ),
+              );
+            }),
           ),
         );
-      }),
+      },
     );
   }
   
@@ -225,14 +292,19 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.black.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                _displayText,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-                softWrap: true,
-                overflow: TextOverflow.visible,
+              child: ValueListenableBuilder<String>(
+                valueListenable: _displayTextNotifier,
+                builder: (context, displayText, child) {
+                  return Text(
+                    displayText,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    softWrap: true,
+                    overflow: TextOverflow.visible,
+                  );
+                },
               ),
             ),
           ),
@@ -243,6 +315,7 @@ class _HomePageState extends State<HomePage> {
             right: 24,
             child: GestureDetector(
               onTap: () {
+                HapticFeedback.heavyImpact(); // Test haptic on stats toggle
                 setState(() {
                   _showDays = !_showDays;
                 });
